@@ -17,14 +17,95 @@ import requests
 import time
 from supabase import create_client, Client
 from datetime import datetime
+from googleapiclient.http import MediaIoBaseDownload
 
-# Configuración de la página
-st.set_page_config(
-    page_title="ISILAudit IA",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Configuración de usuarios
+USERS = {
+    "admin": "09678916",
+    "jsato": "SanManz12025", 
+    "rrepetto": "SanManz22025"
+}
+
+def login_screen():
+    """Pantalla de login simple"""
+    st.set_page_config(
+        page_title="ISILAudit IA - Login",
+        page_icon="🔐",
+        layout="centered"
+    )
+    
+    # CSS personalizado para el login
+    st.markdown("""
+    <style>
+    .login-container {
+        max-width: 400px;
+        margin: 0 auto;
+        padding: 2rem;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        background-color: white;
+    }
+    .login-title {
+        text-align: center;
+        color: #1f77b4;
+        margin-bottom: 2rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Título principal
+    st.markdown("<h1 class='login-title'>🏭 ISILAudit IA</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; color: #666;'>Iniciar Sesión</h3>", unsafe_allow_html=True)
+    
+    # Contenedor del login
+    with st.container():
+        col1, col2, col3 = st.columns([1, 2, 1])
+        
+        with col2:
+            # Formulario de login
+            with st.form("login_form"):
+                usuario = st.text_input("👤 Usuario", placeholder="Ingresa tu usuario")
+                password = st.text_input("🔑 Contraseña", type="password", placeholder="Ingresa tu contraseña")
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                submit_button = st.form_submit_button("🔐 Iniciar Sesión", use_container_width=True)
+                
+                if submit_button:
+                    if usuario in USERS and USERS[usuario] == password:
+                        st.session_state.authenticated = True
+                        st.session_state.current_user = usuario
+                        st.success("✅ ¡Login exitoso!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("❌ Usuario o contraseña incorrectos")
+                        time.sleep(2)
+                        st.rerun()
+    
+    # Información adicional
+    st.markdown("---")
+    st.markdown("""
+    <div style='text-align: center; color: #888; font-size: 0.8em;'>
+        <p>🔒 Sistema de Auditoría Inteligente</p>
+        <p>Para soporte técnico, contacta al administrador</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+def check_authentication():
+    """Verificar si el usuario está autenticado"""
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+    
+    if not st.session_state.authenticated:
+        login_screen()
+        st.stop()
+
+def logout():
+    """Cerrar sesión"""
+    st.session_state.authenticated = False
+    if 'current_user' in st.session_state:
+        del st.session_state.current_user
+    st.rerun()
 
 # Configuración de Google Drive API
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
@@ -198,13 +279,14 @@ class GoogleDriveManager:
                 return None
             
             request = self.service.files().get_media(fileId=file_id)
-            file_content = io.BytesIO()
+            file_io = io.BytesIO()
+            downloader = MediaIoBaseDownload(file_io, request)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
             
-            downloader = request.execute()
-            file_content.write(downloader)
-            file_content.seek(0)
-            
-            return file_content.getvalue()
+            file_io.seek(0)
+            return file_io.getvalue()
             
         except Exception as e:
             st.error(f"❌ Error al descargar archivo: {str(e)}")
@@ -291,7 +373,7 @@ class URLValidator:
             else:
                 status = f"⚠️ Código {status_code}"
                 description = f"Estado HTTP: {status_code}"
-                
+            
         except requests.exceptions.ConnectionError:
             status = "❌ Sin conexión"
             description = "No se puede conectar al servidor"
@@ -321,8 +403,8 @@ class SupabaseManager:
         if SUPABASE_URL and SUPABASE_KEY:
             try:
                 self.client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-                # Probar la conexión
-                test_result = self.client.table('system_config').select('*').limit(1).execute()
+                # Probar la conexión con la nueva tabla
+                test_result = self.client.table('validated_urls').select('*').limit(1).execute()
                 self.connection_status = "✅ Conectado"
             except Exception as e:
                 self.connection_status = f"❌ Error: {str(e)}"
@@ -335,37 +417,20 @@ class SupabaseManager:
         """Obtener el estado de la conexión"""
         return self.connection_status
     
-    def save_urls_data(self, urls_data):
-        """Guardar datos de URLs en Supabase"""
+    def save_urls_data(self, urls_data, current_user):
+        """Guardar datos de URLs validadas en la nueva tabla simplificada"""
         if not self.client:
             st.error("❌ No hay conexión con Supabase configurada")
             return False
         
         try:
-            # Preparar datos para insertar en ppt_urls
+            # Preparar datos para insertar en la tabla validated_urls
             records = []
-            files_info = {}  # Para estadísticas de archivos
             
             for url_info in urls_data:
-                # Registrar información del archivo
-                filename = url_info.get('filename', '')
-                if filename not in files_info:
-                    files_info[filename] = {
-                        'filename': filename,
-                        'subfolder': url_info.get('subfolder', ''),
-                        'url_count': 0,
-                        'max_slide': 0
-                    }
-                
-                files_info[filename]['url_count'] += 1
-                files_info[filename]['max_slide'] = max(
-                    files_info[filename]['max_slide'], 
-                    url_info.get('slide', 1)
-                )
-                
-                # Preparar registro de URL
+                # Preparar registro simplificado
                 record = {
-                    'filename': filename,
+                    'filename': url_info.get('filename', ''),
                     'slide_number': url_info.get('slide', 1),
                     'url': url_info.get('url', ''),
                     'url_domain': urlparse(url_info.get('url', '')).netloc,
@@ -374,35 +439,18 @@ class SupabaseManager:
                     'status': url_info.get('status', ''),
                     'status_description': url_info.get('status_description', ''),
                     'checked_at': url_info.get('checked_at', datetime.now().isoformat()),
+                    'subfolder': url_info.get('subfolder', ''),
+                    'processed_by': current_user,  # Usuario actual
                     'created_at': datetime.now().isoformat()
                 }
                 records.append(record)
             
-            # Insertar URLs en Supabase
-            result = self.client.table('ppt_urls').insert(records).execute()
+            # Insertar URLs validadas en Supabase
+            result = self.client.table('validated_urls').insert(records).execute()
             
             if result.data:
-                # Insertar estadísticas de archivos procesados
-                file_records = []
-                for filename, info in files_info.items():
-                    file_record = {
-                        'filename': filename,
-                        'folder_name': info['subfolder'],
-                        'subfolder': info['subfolder'],
-                        'total_urls_found': info['url_count'],
-                        'total_slides': info['max_slide'],
-                        'processed_at': datetime.now().isoformat(),
-                        'created_at': datetime.now().isoformat()
-                    }
-                    file_records.append(file_record)
-                
-                # Insertar información de archivos procesados
-                try:
-                    self.client.table('processed_files').insert(file_records).execute()
-                except Exception as e:
-                    st.warning(f"⚠️ URLs guardadas, pero error al guardar estadísticas: {str(e)}")
-                
-                st.success(f"✅ Se guardaron {len(result.data)} URLs de {len(files_info)} archivo(s) en Supabase")
+                st.success(f"✅ Se guardaron {len(result.data)} URLs validadas en Supabase")
+                st.info(f"👤 Procesado por: {current_user}")
                 return True
             else:
                 st.error("❌ No se pudieron guardar los datos")
@@ -413,7 +461,30 @@ class SupabaseManager:
             return False
 
 def main():
-    st.title("🏭 ISILAudit IA")
+    # Verificar autenticación antes de mostrar la aplicación
+    check_authentication()
+    
+    # Configuración de la página (ahora dentro de main)
+    st.set_page_config(
+        page_title="ISILAudit IA",
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    # Header con información del usuario y logout
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        st.title("🏭 ISILAudit IA")
+    
+    with col2:
+        st.write(f"👤 Usuario: **{st.session_state.current_user}**")
+    
+    with col3:
+        if st.button("🚪 Cerrar Sesión", type="secondary"):
+            logout()
+    
     st.markdown("---")
     
     # Mostrar estado de Supabase
@@ -612,36 +683,24 @@ def main():
                                 st.session_state.extraction_completed = True
                                 
                                 if all_urls:
-                                    # Mostrar resultados en una tabla mejorada
-                                    df_urls = pd.DataFrame(all_urls)
+                                    # Mostrar resultados
+                                    df = pd.DataFrame(all_urls)
+                                    st.dataframe(df[['filename', 'slide', 'url', 'context']], use_container_width=True, height=300)
                                     
-                                    # Reordenar columnas para mejor visualización
-                                    column_order = ['filename', 'slide', 'url', 'domain', 'location', 'context', 'subfolder']
-                                    df_urls = df_urls.reindex(columns=[col for col in column_order if col in df_urls.columns])
-                                    
-                                    st.dataframe(df_urls, use_container_width=True, height=400)
-                                    
-                                    # Estadísticas mejoradas
-                                    st.subheader("📊 Estadísticas")
-                                    col1, col2, col3, col4 = st.columns(4)
-                                    
-                                    with col1:
+                                    # Estadísticas básicas
+                                    st.subheader("📈 Estadísticas")
+                                    col_stat1, col_stat2, col_stat3 = st.columns(3)
+                                    with col_stat1:
                                         st.metric("Total URLs", len(all_urls))
-                                    
-                                    with col2:
-                                        unique_domains = df_urls['domain'].nunique()
-                                        st.metric("Dominios Únicos", unique_domains)
-                                    
-                                    with col3:
-                                        st.metric("Archivos Analizados", len(st.session_state.selected_files))
-                                    
-                                    with col4:
-                                        unique_subfolders = df_urls['subfolder'].nunique()
-                                        st.metric("Subcarpetas", unique_subfolders)
+                                    with col_stat2:
+                                        unique_domains = df['domain'].nunique()
+                                        st.metric("Dominios únicos", unique_domains)
+                                    with col_stat3:
+                                        st.metric("Archivos procesados", len(st.session_state.selected_files))
                                 else:
-                                    st.warning("No se encontraron URLs en los archivos seleccionados.")
+                                    st.warning("⚠️ No se encontraron URLs en los archivos seleccionados")
                         
-                        # SECCIÓN DE VALIDACIÓN - Solo aparece si hay URLs extraídas
+                        # Validación de URLs
                         if st.session_state.get('extraction_completed', False) and st.session_state.get('all_urls', []):
                             st.markdown("---")
                             st.subheader("🔍 Paso 2: Validación de URLs")
@@ -737,7 +796,7 @@ def main():
                                         upload_status.text("📤 Enviando datos validados a Supabase...")
                                         upload_progress.progress(0.5)
                                         
-                                        success = supabase_manager.save_urls_data(validated_urls)
+                                        success = supabase_manager.save_urls_data(validated_urls, st.session_state.current_user)
                                         
                                         upload_progress.progress(1.0)
                                         if success:
