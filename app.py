@@ -109,9 +109,8 @@ def logout():
     st.rerun()
 
 # Configuración de Google Drive API
-SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
-CREDENTIALS_FILE = 'credentials.json'
-TOKEN_FILE = 'token.json'
+SCOPES = ['https://www.googleapis.com/auth/drive']
+SERVICE_ACCOUNT_FILE = 'service_account.json'  # tu archivo JSON
 
 # Configuración de Supabase
 try:
@@ -131,99 +130,48 @@ class GoogleDriveManager:
         try:
             # Verificar si tenemos credenciales de Service Account en secrets
             if hasattr(st, 'secrets') and 'GOOGLE_CREDENTIALS' in st.secrets:
-                st.info("🔍 Intentando autenticar con Service Account...")
-                
-                # Mostrar información de debug
+                # Eliminar mensajes de debug
                 credentials_raw = st.secrets["GOOGLE_CREDENTIALS"]
-                st.write(f"🔍 **Debug - Tipo de credencial:** {type(credentials_raw)}")
-                st.write(f"🔍 **Debug - Longitud:** {len(str(credentials_raw))}")
-                st.write(f"🔍 **Debug - Primeros 100 caracteres:** {str(credentials_raw)[:100]}...")
-                
                 # Manejar tanto string JSON como AttrDict
                 if isinstance(credentials_raw, dict) or hasattr(credentials_raw, '__dict__'):
-                    # Ya es un diccionario (AttrDict de Streamlit)
                     credentials_info = dict(credentials_raw)
-                    st.success("✅ Credenciales detectadas como diccionario (AttrDict)")
                 else:
-                    # Es un string JSON que necesita parsing
                     credentials_info = json.loads(credentials_raw)
-                    st.success("✅ Credenciales parseadas desde JSON string")
-                
                 creds = service_account.Credentials.from_service_account_info(
                     credentials_info, scopes=SCOPES
                 )
                 self.credentials = creds
-                
-                # Crear el servicio de Google Drive
                 self.service = build('drive', 'v3', credentials=creds)
-                
                 # Verificar que la conexión funcione
-                results = self.service.files().list(pageSize=1).execute()
-                
+                self.service.files().list(pageSize=1).execute()
                 st.success("✅ Conexión con Google Drive establecida (Service Account)")
                 return True
-                
-            elif os.path.exists(CREDENTIALS_FILE):
-                st.info("🔍 Intentando autenticar con OAuth local...")
-                
-                # Fallback para desarrollo local con OAuth
-                creds = None
-                
-                # Cargar token existente si existe
-                if os.path.exists(TOKEN_FILE):
-                    creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-                
-                # Si no hay credenciales válidas disponibles, permitir al usuario autenticarse
-                if not creds or not creds.valid:
-                    if creds and creds.expired and creds.refresh_token:
-                        creds.refresh(Request())
-                    else:
-                        flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-                        
-                        # Usar run_local_server para autenticación automática
-                        try:
-                            creds = flow.run_local_server(port=8080, open_browser=True)
-                        except Exception as e:
-                            st.error(f"❌ Error en autenticación: {str(e)}")
-                            st.info("💡 Asegúrate de que el puerto 8080 esté disponible")
-                            return False
-                    
-                    # Guardar las credenciales para la próxima ejecución
-                    with open(TOKEN_FILE, 'w') as token:
-                        token.write(creds.to_json())
-                
-                # Crear el servicio de Google Drive
-                self.service = build('drive', 'v3', credentials=creds)
+            elif os.path.exists(SERVICE_ACCOUNT_FILE):
+                creds = service_account.Credentials.from_service_account_file(
+                    SERVICE_ACCOUNT_FILE, scopes=SCOPES
+                )
                 self.credentials = creds
-                
-                # Verificar que la conexión funcione
-                results = self.service.files().list(pageSize=1).execute()
-                
-                st.success("✅ Conexión con Google Drive establecida (OAuth local)")
+                self.service = build('drive', 'v3', credentials=creds)
+                self.service.files().list(pageSize=1).execute()
+                st.success("✅ Conexión con Google Drive establecida (Service Account)")
                 return True
             else:
                 st.error("❌ No se encontraron credenciales de Google Drive")
                 st.info("💡 Para producción: Configura GOOGLE_CREDENTIALS en Streamlit Secrets")
-                st.info("💡 Para desarrollo: Coloca credentials.json en la carpeta del proyecto")
+                st.info("💡 Para desarrollo: Coloca service_account.json en la carpeta del proyecto")
                 return False
-            
         except Exception as e:
             st.error(f"❌ Error al conectar con Google Drive: {str(e)}")
             st.error(f"🔍 Detalle del error: {type(e).__name__}")
-            
-            # Mostrar información adicional de debug para JSON
             if "JSON" in str(e) or "Malformed" in str(e):
                 st.error("🚨 **Problema con formato JSON de credenciales**")
                 st.info("💡 **Soluciones:**")
                 st.write("1. Asegúrate de usar comillas triples '''")
                 st.write("2. Verificar que todos los \\n sean \\\\n")
                 st.write("3. JSON debe estar en una sola línea sin espacios")
-                
-                # Mostrar formato correcto
-                st.code('''
-GOOGLE_CREDENTIALS = \'\'\'{"type": "service_account", "project_id": "agente-101", ...}\'\'\'
-                ''')
-            
+                st.code("""
+GOOGLE_CREDENTIALS = '''{"type": "service_account", "project_id": "agente-101", ...}'''
+""")
             return False
     
     def get_folders(self):
@@ -345,6 +293,22 @@ GOOGLE_CREDENTIALS = \'\'\'{"type": "service_account", "project_id": "agente-101
             st.error(f"❌ Error al descargar archivo: {str(e)}")
             return None
 
+    def add_folder_to_root(self, folder_id):
+        """Añadir una carpeta compartida a la raíz del Service Account"""
+        try:
+            if not self.service:
+                st.error("❌ No hay servicio de Google Drive inicializado.")
+                return False
+            self.service.files().update(
+                fileId=folder_id,
+                addParents='root'
+            ).execute()
+            st.success(f"✅ Carpeta añadida a la raíz del Service Account (ID: {folder_id})")
+            return True
+        except Exception as e:
+            st.error(f"❌ Error al añadir carpeta a la raíz: {str(e)}")
+            return False
+
 def main():
     # Verificar autenticación antes de mostrar la aplicación
     check_authentication()
@@ -382,193 +346,125 @@ def main():
     
     # Crear las pestañas
     tab_names = [
-        "URL", "Plantillas", "Bibliografía", "Imágenes", 
+        "Conexión Drive", "URL", "Plantillas", "Bibliografía", "Imágenes", 
         "Archivos", "Redacción", "Secuencia", "Videos", "Datos"
     ]
     
     tabs = st.tabs(tab_names)
     
-    # Pestaña URL (principal)
+    # Pestaña 0: Conexión y gestión de Google Drive
     with tabs[0]:
-        st.header("🔗 Análisis de URLs en Presentaciones")
-        
-        # Verificar disponibilidad de Google Drive
+        st.header("🔌 Conexión y Gestión de Google Drive")
         has_google_credentials = (
             (hasattr(st, 'secrets') and 'GOOGLE_CREDENTIALS' in st.secrets) or 
-            os.path.exists(CREDENTIALS_FILE)
+            os.path.exists(SERVICE_ACCOUNT_FILE)
         )
-        
         if has_google_credentials:
-            # Modo completo - con Google Drive
             st.success("📁 **Google Drive configurado correctamente**")
-            
-            # Inicializar el manager de Google Drive
-            if 'drive_manager' not in st.session_state:
-                st.session_state.drive_manager = GoogleDriveManager()
-            
-            # Inicializar estado de selección de archivos
-            if 'selected_files' not in st.session_state:
-                st.session_state.selected_files = []
-            
-            # Mostrar estado de conexión actual
+        if 'drive_manager' not in st.session_state:
+            st.session_state.drive_manager = GoogleDriveManager()
+        if 'selected_files' not in st.session_state:
+            st.session_state.selected_files = []
+        if st.session_state.get('connected', False):
+            st.success("📁 Conectado a Google Drive")
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            connect_button = st.button("🔌 Conectar con Google Drive", type="primary")
+        with col2:
             if st.session_state.get('connected', False):
-                st.success("📁 Conectado a Google Drive")
-            
-            # Botón de conexión a Google Drive
-            col1, col2 = st.columns([1, 3])
-            
-            with col1:
-                connect_button = st.button("🔌 Conectar con Google Drive", type="primary")
-            
-            with col2:
-                if st.session_state.get('connected', False):
-                    if st.button("🔄 Reconectar", type="secondary"):
-                        # Limpiar tokens para forzar nueva autenticación
-                        if os.path.exists(TOKEN_FILE):
-                            os.remove(TOKEN_FILE)
-                        st.session_state.connected = False
-                        st.rerun()
-            
-            if connect_button:
-                with st.spinner("🔐 Autenticando con Google Drive..."):
-                    st.session_state.connected = st.session_state.drive_manager.authenticate()
-            
-            # Mostrar estado de conexión
-            if st.session_state.get('connected', False):
-                
-                # Lista desplegable de carpetas mejorada
-                st.subheader("📂 Seleccionar Carpeta")
-                
-                with st.spinner("📁 Cargando todas las carpetas de la raíz..."):
-                    folders = st.session_state.drive_manager.get_folders()
-                
-                if folders:
-                    folder_names = [folder['name'] for folder in folders]
-                    
-                    # Mostrar información de carpetas encontradas
-                    st.info(f"📊 Se encontraron {len(folders)} carpetas en la raíz de Google Drive")
-                    
-                    selected_folder = st.selectbox(
-                        "Selecciona una carpeta de la raíz:",
-                        options=folder_names,
-                        index=None,
-                        placeholder="Elige una carpeta...",
-                        help="Lista completa de todas las carpetas disponibles en la raíz"
-                    )
-                    
-                    if selected_folder:
-                        # Encontrar el ID de la carpeta seleccionada
-                        folder_id = next(folder['id'] for folder in folders if folder['name'] == selected_folder)
-                        
-                        st.info(f"🔍 Buscando archivos PPTX en: **{selected_folder}**")
-                        
-                        # Buscar archivos PPTX
-                        with st.spinner("🔍 Buscando archivos PPTX..."):
-                            pptx_files = st.session_state.drive_manager.find_pptx_files(folder_id)
-                        
-                        if pptx_files:
-                            st.subheader("📋 Archivos PPTX Encontrados")
-                            st.markdown("*Solo se muestran archivos en subcarpetas con formato XXXXX-SESIONXX*")
-                            
-                            # Mostrar información adicional
-                            st.info(f"📊 Encontrados **{len(pptx_files)}** archivos PPTX")
-                            
-                            # USAR FORM PARA EVITAR OSCURECIMIENTO
-                            with st.form("file_selection_form"):
-                                st.write("**Selecciona los archivos a analizar:**")
-                                
-                                # Encabezados de columnas
-                                col_header1, col_header2, col_header3, col_header4 = st.columns([1, 4, 2, 1.5])
-                                with col_header1:
-                                    st.write("**Seleccionar**")
-                                with col_header2:
-                                    st.write("**Archivo PPT**")
-                                with col_header3:
-                                    st.write("**Carpeta**")
-                                with col_header4:
-                                    st.write("**Tamaño**")
-                                
-                                st.markdown("---")
-                                
-                                # Checkboxes dentro del form (no causan recarga)
-                                selected_indices = []
-                                for i, file in enumerate(pptx_files):
-                                    col_check, col_name, col_folder, col_size = st.columns([1, 4, 2, 1.5])
-                                    
-                                    with col_check:
-                                        # Checkbox simple dentro del form
-                                        checkbox_value = st.checkbox("", key=f"form_file_{i}", label_visibility="collapsed")
-                                        if checkbox_value:
-                                            selected_indices.append(i)
-                                    
-                                    with col_name:
-                                        st.write(f"📄 {file['name']}")
-                                    
-                                    with col_folder:
-                                        st.write(f"📁 {file.get('subfolder', 'N/A')}")
-                                    
-                                    with col_size:
-                                        st.write(f"💾 {file.get('size_mb', 0)} MB")
-                                
-                                # Botón de envío del form
-                                submitted = st.form_submit_button("✅ Confirmar Selección", type="primary")
-                                
-                                if submitted and selected_indices:
-                                    # Almacenar archivos seleccionados en session state
-                                    st.session_state.selected_files = [pptx_files[i] for i in selected_indices]
-                                    st.success(f"✅ {len(selected_indices)} archivo(s) seleccionado(s) para análisis")
-                            
-                            # Mostrar archivos seleccionados fuera del form
-                            if hasattr(st.session_state, 'selected_files') and st.session_state.selected_files:
-                                st.write("**Archivos seleccionados para análisis:**")
-                                for file in st.session_state.selected_files:
-                                    st.write(f"• {file['name']} ({file.get('subfolder', 'N/A')})")
-                                
-                                # Botón para extraer URLs (separado del form)
-                                extract_button = st.button("🔍 Extraer URLs", type="primary", 
-                                                         help=f"Extraer URLs de {len(st.session_state.selected_files)} archivo(s) seleccionado(s)")
-                                
-                                if extract_button:
-                                    st.subheader("🌐 URLs Encontradas")
-                                    st.info("🚧 **Funcionalidad de extracción de URLs en desarrollo**")
-                                    st.write("Una vez conectado exitosamente, se habilitará la extracción completa de URLs de archivos PPTX.")
-                        else:
-                            st.info("👆 No se encontraron archivos PPTX en las subcarpetas con formato XXXXX-SESIONXX")
-                
+                if st.button("🔄 Reconectar", type="secondary"):
+                    if os.path.exists(SERVICE_ACCOUNT_FILE):
+                        os.remove(SERVICE_ACCOUNT_FILE)
+                    st.session_state.connected = False
+                    st.rerun()
+        if connect_button:
+            with st.spinner("🔐 Autenticando con Google Drive..."):
+                st.session_state.connected = st.session_state.drive_manager.authenticate()
+        # NUEVO: Añadir carpeta a la raíz
+        if st.session_state.get('connected', False):
+            st.markdown("---")
+            st.subheader("➕ Añadir carpeta compartida a la raíz del Service Account")
+            folder_id_input = st.text_input("Pega aquí el ID de la carpeta de Google Drive compartida")
+            if st.button("Añadir carpeta a la raíz"):
+                if folder_id_input:
+                    st.session_state.drive_manager.add_folder_to_root(folder_id_input)
                 else:
-                    st.warning("No se encontraron carpetas en la raíz de Google Drive.")
-            
+                    st.warning("Debes ingresar un ID de carpeta")
+            st.markdown("---")
+            if st.button("🔄 Actualizar lista de carpetas"):
+                st.session_state.folders_cache = st.session_state.drive_manager.get_folders()
+                st.success("Lista de carpetas actualizada")
+    # Pestaña 1: Selección de carpeta y análisis de URLs
+    with tabs[1]:
+        st.header("🔗 Análisis de URLs en Presentaciones")
+        if st.session_state.get('connected', False):
+            with st.spinner("📁 Cargando todas las carpetas de la raíz..."):
+                folders = st.session_state.drive_manager.get_folders()
+            if folders:
+                folder_names = [folder['name'] for folder in folders]
+                st.info(f"📊 Se encontraron {len(folders)} carpetas en la raíz de Google Drive")
+                selected_folder = st.selectbox(
+                    "Selecciona una carpeta de la raíz:",
+                    options=folder_names,
+                    index=None,
+                    placeholder="Elige una carpeta...",
+                    help="Lista completa de todas las carpetas disponibles en la raíz"
+                )
+                if selected_folder:
+                    folder_id = next(folder['id'] for folder in folders if folder['name'] == selected_folder)
+                    st.info(f"🔍 Buscando archivos PPTX en: **{selected_folder}**")
+                    with st.spinner("🔍 Buscando archivos PPTX..."):
+                        pptx_files = st.session_state.drive_manager.find_pptx_files(folder_id)
+                    if pptx_files:
+                        st.subheader("📋 Archivos PPTX Encontrados")
+                        st.markdown("*Solo se muestran archivos en subcarpetas con formato XXXXX-SESIONXX*")
+                        st.info(f"📊 Encontrados **{len(pptx_files)}** archivos PPTX")
+                        with st.form("file_selection_form"):
+                            st.write("**Selecciona los archivos a analizar:**")
+                            col_header1, col_header2, col_header3, col_header4 = st.columns([1, 4, 2, 1.5])
+                            with col_header1:
+                                st.write("**Seleccionar**")
+                            with col_header2:
+                                st.write("**Archivo PPT**")
+                            with col_header3:
+                                st.write("**Carpeta**")
+                            with col_header4:
+                                st.write("**Tamaño**")
+                            st.markdown("---")
+                            selected_indices = []
+                            for i, file in enumerate(pptx_files):
+                                col_check, col_name, col_folder, col_size = st.columns([1, 4, 2, 1.5])
+                                with col_check:
+                                    checkbox_value = st.checkbox("", key=f"form_file_{i}", label_visibility="collapsed")
+                                    if checkbox_value:
+                                        selected_indices.append(i)
+                                with col_name:
+                                    st.write(f"📄 {file['name']}")
+                                with col_folder:
+                                    st.write(f"📁 {file.get('subfolder', 'N/A')}")
+                                with col_size:
+                                    st.write(f"💾 {file.get('size_mb', 0)} MB")
+                            submitted = st.form_submit_button("✅ Confirmar Selección", type="primary")
+                            if submitted and selected_indices:
+                                st.session_state.selected_files = [pptx_files[i] for i in selected_indices]
+                                st.success(f"✅ {len(selected_indices)} archivo(s) seleccionado(s) para análisis")
+                        if hasattr(st.session_state, 'selected_files') and st.session_state.selected_files:
+                            st.write("**Archivos seleccionados para análisis:**")
+                            for file in st.session_state.selected_files:
+                                st.write(f"• {file['name']} ({file.get('subfolder', 'N/A')})")
+                            extract_button = st.button("🔍 Extraer URLs", type="primary", help=f"Extraer URLs de {len(st.session_state.selected_files)} archivo(s) seleccionado(s)")
+                            if extract_button:
+                                st.subheader("🌐 URLs Encontradas")
+                                st.info("🚧 **Funcionalidad de extracción de URLs en desarrollo**")
+                                st.write("Una vez conectado exitosamente, se habilitará la extracción completa de URLs de archivos PPTX.")
+                    else:
+                        st.info("👆 No se encontraron archivos PPTX en las subcarpetas con formato XXXXX-SESIONXX")
             else:
-                st.info("👆 Haz clic en 'Conectar con Google Drive' para comenzar")
-        
+                st.warning("No se encontraron carpetas en la raíz de Google Drive.")
         else:
-            # Error - Google Drive no configurado
-            st.error("❌ **Google Drive no está configurado**")
-            st.warning("📁 Se requiere configuración de Google Drive para usar la aplicación")
-            
-            st.markdown("""
-            ### 🔧 **Configuración requerida:**
-            
-            **En Streamlit Cloud:**
-            1. Ve a **Settings → Secrets**
-            2. Agrega `GOOGLE_CREDENTIALS` con tu Service Account JSON
-            3. Asegúrate de usar el formato correcto (una sola línea)
-            
-            **En desarrollo local:**
-            1. Coloca `credentials.json` en la carpeta del proyecto
-            
-            ### 📋 **Formato correcto para Streamlit Secrets:**
-            ```toml
-            GOOGLE_CREDENTIALS = '''{"type": "service_account", "project_id": "...", ...}'''
-            ```
-            
-            ⚠️ **Importante:** El JSON debe estar en una sola línea, sin espacios ni saltos de línea.
-            """)
-            
-            st.stop()  # Detener la ejecución si no hay Google Drive
-    
+            st.info("👆 Conéctate primero en la pestaña 'Conexión Drive'")
     # Pestañas vacías (2-9)
-    for i in range(1, 9):
+    for i in range(2, 10):
         with tabs[i]:
             st.header(f"🚧 {tab_names[i]}")
             st.info("Esta sección estará disponible próximamente.")
