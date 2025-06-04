@@ -391,6 +391,24 @@ def main():
                 else:
                     st.warning("Debes ingresar un ID de carpeta")
             st.markdown("---")
+            st.subheader("📥 Añadir varias carpetas desde archivo CSV")
+            csv_file = st.file_uploader("Sube un archivo CSV con una columna 'folder_id'", type=["csv"])
+            if csv_file is not None:
+                try:
+                    df = pd.read_csv(csv_file)
+                    if 'folder_id' in df.columns:
+                        if st.button("Añadir todas las carpetas del CSV a la raíz"):
+                            resultados = []
+                            for folder_id in df['folder_id'].dropna().astype(str):
+                                resultado = st.session_state.drive_manager.add_folder_to_root(folder_id)
+                                resultados.append((folder_id, resultado))
+                            exitos = sum(1 for _, ok in resultados if ok)
+                            st.success(f"Se añadieron {exitos} carpetas a la raíz correctamente.")
+                    else:
+                        st.error("El CSV debe tener una columna llamada 'folder_id'")
+                except Exception as e:
+                    st.error(f"Error al procesar el archivo CSV: {e}")
+            st.markdown("---")
             if st.button("🔄 Actualizar lista de carpetas"):
                 st.session_state.folders_cache = st.session_state.drive_manager.get_folders()
                 st.success("Lista de carpetas actualizada")
