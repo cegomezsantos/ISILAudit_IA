@@ -139,8 +139,16 @@ class GoogleDriveManager:
                 st.write(f"🔍 **Debug - Longitud:** {len(str(credentials_raw))}")
                 st.write(f"🔍 **Debug - Primeros 100 caracteres:** {str(credentials_raw)[:100]}...")
                 
-                # Usar credenciales desde Streamlit Secrets (Service Account)
-                credentials_info = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+                # Manejar tanto string JSON como AttrDict
+                if isinstance(credentials_raw, dict) or hasattr(credentials_raw, '__dict__'):
+                    # Ya es un diccionario (AttrDict de Streamlit)
+                    credentials_info = dict(credentials_raw)
+                    st.success("✅ Credenciales detectadas como diccionario (AttrDict)")
+                else:
+                    # Es un string JSON que necesita parsing
+                    credentials_info = json.loads(credentials_raw)
+                    st.success("✅ Credenciales parseadas desde JSON string")
+                
                 creds = service_account.Credentials.from_service_account_info(
                     credentials_info, scopes=SCOPES
                 )
