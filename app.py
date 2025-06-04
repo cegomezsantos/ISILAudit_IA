@@ -133,6 +133,12 @@ class GoogleDriveManager:
             if hasattr(st, 'secrets') and 'GOOGLE_CREDENTIALS' in st.secrets:
                 st.info("🔍 Intentando autenticar con Service Account...")
                 
+                # Mostrar información de debug
+                credentials_raw = st.secrets["GOOGLE_CREDENTIALS"]
+                st.write(f"🔍 **Debug - Tipo de credencial:** {type(credentials_raw)}")
+                st.write(f"🔍 **Debug - Longitud:** {len(str(credentials_raw))}")
+                st.write(f"🔍 **Debug - Primeros 100 caracteres:** {str(credentials_raw)[:100]}...")
+                
                 # Usar credenciales desde Streamlit Secrets (Service Account)
                 credentials_info = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
                 creds = service_account.Credentials.from_service_account_info(
@@ -196,7 +202,140 @@ class GoogleDriveManager:
         except Exception as e:
             st.error(f"❌ Error al conectar con Google Drive: {str(e)}")
             st.error(f"🔍 Detalle del error: {type(e).__name__}")
+            
+            # Mostrar información adicional de debug para JSON
+            if "JSON" in str(e) or "Malformed" in str(e):
+                st.error("🚨 **Problema con formato JSON de credenciales**")
+                st.info("💡 **Soluciones:**")
+                st.write("1. Asegúrate de usar comillas triples '''")
+                st.write("2. Verificar que todos los \\n sean \\\\n")
+                st.write("3. JSON debe estar en una sola línea sin espacios")
+                
+                # Mostrar formato correcto
+                st.code('''
+GOOGLE_CREDENTIALS = \'\'\'{"type": "service_account", "project_id": "agente-101", ...}\'\'\'
+                ''')
+            
             return False
+    
+    def get_folders(self):
+        """Obtener TODAS las carpetas de la raíz de Google Drive"""
+        try:
+            if not self.service:
+                return []
+            
+            # Buscar TODAS las carpetas en la raíz (parents in 'root')
+            query = "mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false"
+            results = self.service.files().list(
+                q=query,
+                pageSize=1000,  # Aumentar para obtener todas las carpetas
+                fields="nextPageToken, files(id, name, modifiedTime)"
+            ).execute()
+            
+            folders = results.get('files', [])
+            
+            # Ordenar carpetas alfabéticamente
+            folders_sorted = sorted(folders, key=lambda x: x['name'].lower())
+            
+            return [{"name": folder['name'], "id": folder['id']} for folder in folders_sorted]
+            
+        except Exception as e:
+            st.error(f"❌ Error al obtener carpetas: {str(e)}")
+            return []
+    
+    def find_pptx_files(self, folder_id):
+        """Buscar archivos PPTX en subcarpetas con formato específico y obtener información completa"""
+        try:
+            if not self.service:
+                return []
+            
+            all_pptx_files = []
+            
+            # Buscar todas las subcarpetas dentro de la carpeta seleccionada
+            subfolders = self._get_subfolders_recursive(folder_id)
+            
+            # Filtrar subcarpetas que sigan el patrón XXXXX-SESIONXX
+            pattern = re.compile(r'^\d{5}-SESION\d{2}$')
+            valid_subfolders = [folder for folder in subfolders if pattern.match(folder['name'])]
+            
+            # Buscar archivos PPTX en las subcarpetas válidas
+            for subfolder in valid_subfolders:
+                pptx_files = self._get_pptx_in_folder(subfolder['id'])
+                for file in pptx_files:
+                    file['subfolder'] = subfolder['name']
+                    file['size_mb'] = round(int(file.get('size', 0)) / (1024 * 1024), 1) if file.get('size') else 0
+                    all_pptx_files.append(file)
+            
+            return all_pptx_files
+            
+        except Exception as e:
+            st.error(f"❌ Error al buscar archivos PPTX: {str(e)}")
+            return []
+    
+    def _get_subfolders_recursive(self, parent_folder_id, max_depth=3, current_depth=0):
+        """Obtener todas las subcarpetas recursivamente"""
+        subfolders = []
+        
+        if current_depth >= max_depth:
+            return subfolders
+        
+        try:
+            query = f"mimeType='application/vnd.google-apps.folder' and '{parent_folder_id}' in parents and trashed=false"
+            results = self.service.files().list(
+                q=query,
+                pageSize=100,
+                fields="nextPageToken, files(id, name)"
+            ).execute()
+            
+            folders = results.get('files', [])
+            
+            for folder in folders:
+                subfolders.append(folder)
+                # Buscar recursivamente en subcarpetas
+                subfolders.extend(self._get_subfolders_recursive(folder['id'], max_depth, current_depth + 1))
+            
+            return subfolders
+            
+        except Exception as e:
+            st.warning(f"⚠️ Error al buscar en subcarpetas: {str(e)}")
+            return subfolders
+    
+    def _get_pptx_in_folder(self, folder_id):
+        """Obtener archivos PPTX en una carpeta específica con información completa"""
+        try:
+            query = f"'{folder_id}' in parents and trashed=false and (name contains '.pptx' or name contains '.ppt')"
+            results = self.service.files().list(
+                q=query,
+                pageSize=100,
+                fields="nextPageToken, files(id, name, size, modifiedTime, parents)"
+            ).execute()
+            
+            files = results.get('files', [])
+            return files
+            
+        except Exception as e:
+            st.warning(f"⚠️ Error al buscar archivos PPTX en carpeta: {str(e)}")
+            return []
+    
+    def download_file(self, file_id):
+        """Descargar un archivo de Google Drive"""
+        try:
+            if not self.service:
+                return None
+            
+            request = self.service.files().get_media(fileId=file_id)
+            file_io = io.BytesIO()
+            downloader = MediaIoBaseDownload(file_io, request)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
+            
+            file_io.seek(0)
+            return file_io.getvalue()
+            
+        except Exception as e:
+            st.error(f"❌ Error al descargar archivo: {str(e)}")
+            return None
 
 def main():
     # Verificar autenticación antes de mostrar la aplicación
@@ -259,8 +398,28 @@ def main():
             if 'drive_manager' not in st.session_state:
                 st.session_state.drive_manager = GoogleDriveManager()
             
+            # Inicializar estado de selección de archivos
+            if 'selected_files' not in st.session_state:
+                st.session_state.selected_files = []
+            
+            # Mostrar estado de conexión actual
+            if st.session_state.get('connected', False):
+                st.success("📁 Conectado a Google Drive")
+            
             # Botón de conexión a Google Drive
-            connect_button = st.button("🔌 Conectar con Google Drive", type="primary")
+            col1, col2 = st.columns([1, 3])
+            
+            with col1:
+                connect_button = st.button("🔌 Conectar con Google Drive", type="primary")
+            
+            with col2:
+                if st.session_state.get('connected', False):
+                    if st.button("🔄 Reconectar", type="secondary"):
+                        # Limpiar tokens para forzar nueva autenticación
+                        if os.path.exists(TOKEN_FILE):
+                            os.remove(TOKEN_FILE)
+                        st.session_state.connected = False
+                        st.rerun()
             
             if connect_button:
                 with st.spinner("🔐 Autenticando con Google Drive..."):
@@ -268,57 +427,137 @@ def main():
             
             # Mostrar estado de conexión
             if st.session_state.get('connected', False):
-                st.success("📁 Conectado a Google Drive exitosamente")
+                
+                # Lista desplegable de carpetas mejorada
+                st.subheader("📂 Seleccionar Carpeta")
+                
+                with st.spinner("📁 Cargando todas las carpetas de la raíz..."):
+                    folders = st.session_state.drive_manager.get_folders()
+                
+                if folders:
+                    folder_names = [folder['name'] for folder in folders]
+                    
+                    # Mostrar información de carpetas encontradas
+                    st.info(f"📊 Se encontraron {len(folders)} carpetas en la raíz de Google Drive")
+                    
+                    selected_folder = st.selectbox(
+                        "Selecciona una carpeta de la raíz:",
+                        options=folder_names,
+                        index=None,
+                        placeholder="Elige una carpeta...",
+                        help="Lista completa de todas las carpetas disponibles en la raíz"
+                    )
+                    
+                    if selected_folder:
+                        # Encontrar el ID de la carpeta seleccionada
+                        folder_id = next(folder['id'] for folder in folders if folder['name'] == selected_folder)
+                        
+                        st.info(f"🔍 Buscando archivos PPTX en: **{selected_folder}**")
+                        
+                        # Buscar archivos PPTX
+                        with st.spinner("🔍 Buscando archivos PPTX..."):
+                            pptx_files = st.session_state.drive_manager.find_pptx_files(folder_id)
+                        
+                        if pptx_files:
+                            st.subheader("📋 Archivos PPTX Encontrados")
+                            st.markdown("*Solo se muestran archivos en subcarpetas con formato XXXXX-SESIONXX*")
+                            
+                            # Mostrar información adicional
+                            st.info(f"📊 Encontrados **{len(pptx_files)}** archivos PPTX")
+                            
+                            # USAR FORM PARA EVITAR OSCURECIMIENTO
+                            with st.form("file_selection_form"):
+                                st.write("**Selecciona los archivos a analizar:**")
+                                
+                                # Encabezados de columnas
+                                col_header1, col_header2, col_header3, col_header4 = st.columns([1, 4, 2, 1.5])
+                                with col_header1:
+                                    st.write("**Seleccionar**")
+                                with col_header2:
+                                    st.write("**Archivo PPT**")
+                                with col_header3:
+                                    st.write("**Carpeta**")
+                                with col_header4:
+                                    st.write("**Tamaño**")
+                                
+                                st.markdown("---")
+                                
+                                # Checkboxes dentro del form (no causan recarga)
+                                selected_indices = []
+                                for i, file in enumerate(pptx_files):
+                                    col_check, col_name, col_folder, col_size = st.columns([1, 4, 2, 1.5])
+                                    
+                                    with col_check:
+                                        # Checkbox simple dentro del form
+                                        checkbox_value = st.checkbox("", key=f"form_file_{i}", label_visibility="collapsed")
+                                        if checkbox_value:
+                                            selected_indices.append(i)
+                                    
+                                    with col_name:
+                                        st.write(f"📄 {file['name']}")
+                                    
+                                    with col_folder:
+                                        st.write(f"📁 {file.get('subfolder', 'N/A')}")
+                                    
+                                    with col_size:
+                                        st.write(f"💾 {file.get('size_mb', 0)} MB")
+                                
+                                # Botón de envío del form
+                                submitted = st.form_submit_button("✅ Confirmar Selección", type="primary")
+                                
+                                if submitted and selected_indices:
+                                    # Almacenar archivos seleccionados en session state
+                                    st.session_state.selected_files = [pptx_files[i] for i in selected_indices]
+                                    st.success(f"✅ {len(selected_indices)} archivo(s) seleccionado(s) para análisis")
+                            
+                            # Mostrar archivos seleccionados fuera del form
+                            if hasattr(st.session_state, 'selected_files') and st.session_state.selected_files:
+                                st.write("**Archivos seleccionados para análisis:**")
+                                for file in st.session_state.selected_files:
+                                    st.write(f"• {file['name']} ({file.get('subfolder', 'N/A')})")
+                                
+                                # Botón para extraer URLs (separado del form)
+                                extract_button = st.button("🔍 Extraer URLs", type="primary", 
+                                                         help=f"Extraer URLs de {len(st.session_state.selected_files)} archivo(s) seleccionado(s)")
+                                
+                                if extract_button:
+                                    st.subheader("🌐 URLs Encontradas")
+                                    st.info("🚧 **Funcionalidad de extracción de URLs en desarrollo**")
+                                    st.write("Una vez conectado exitosamente, se habilitará la extracción completa de URLs de archivos PPTX.")
+                        else:
+                            st.info("👆 No se encontraron archivos PPTX en las subcarpetas con formato XXXXX-SESIONXX")
+                
+                else:
+                    st.warning("No se encontraron carpetas en la raíz de Google Drive.")
+            
             else:
                 st.info("👆 Haz clic en 'Conectar con Google Drive' para comenzar")
         
         else:
-            # Modo demo - sin Google Drive
-            st.info("🌐 **Modo Demo - Sin Google Drive**")
-            st.warning("📁 Google Drive no está configurado")
+            # Error - Google Drive no configurado
+            st.error("❌ **Google Drive no está configurado**")
+            st.warning("📁 Se requiere configuración de Google Drive para usar la aplicación")
             
             st.markdown("""
-            ### 🔧 Para usar Google Drive:
+            ### 🔧 **Configuración requerida:**
             
             **En Streamlit Cloud:**
-            1. Configura `GOOGLE_CREDENTIALS` en **Settings → Secrets**
-            2. Usar Service Account JSON completo
+            1. Ve a **Settings → Secrets**
+            2. Agrega `GOOGLE_CREDENTIALS` con tu Service Account JSON
+            3. Asegúrate de usar el formato correcto (una sola línea)
             
             **En desarrollo local:**
             1. Coloca `credentials.json` en la carpeta del proyecto
             
-            ### 🧪 **Modo Demo**
-            Mientras tanto, puedes probar la funcionalidad con datos de ejemplo:
+            ### 📋 **Formato correcto para Streamlit Secrets:**
+            ```toml
+            GOOGLE_CREDENTIALS = '''{"type": "service_account", "project_id": "...", ...}'''
+            ```
+            
+            ⚠️ **Importante:** El JSON debe estar en una sola línea, sin espacios ni saltos de línea.
             """)
             
-            if st.button("🎯 Generar Datos de Ejemplo", type="primary"):
-                st.success("✅ Datos de ejemplo generados")
-                
-                # Generar URLs de ejemplo
-                sample_urls = [
-                    {
-                        'filename': 'demo_presentation.pptx',
-                        'slide': 1,
-                        'url': 'https://www.google.com',
-                        'location': 'Diapositiva 1 - Texto',
-                        'context': 'Google Search',
-                        'subfolder': '12345-SESION01',
-                        'domain': 'google.com'
-                    },
-                    {
-                        'filename': 'demo_presentation.pptx',
-                        'slide': 2,
-                        'url': 'https://www.github.com',
-                        'location': 'Diapositiva 2 - Hipervínculo',
-                        'context': 'GitHub Repository',
-                        'subfolder': '12345-SESION01',
-                        'domain': 'github.com'
-                    }
-                ]
-                
-                # Mostrar tabla
-                df = pd.DataFrame(sample_urls)
-                st.dataframe(df[['filename', 'slide', 'url', 'context']], use_container_width=True)
+            st.stop()  # Detener la ejecución si no hay Google Drive
     
     # Pestañas vacías (2-9)
     for i in range(1, 9):
