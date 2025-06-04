@@ -176,26 +176,35 @@ GOOGLE_CREDENTIALS = '''{"type": "service_account", "project_id": "agente-101", 
             return False
     
     def get_folders(self):
-        """Obtener TODAS las carpetas de la raíz de Google Drive"""
+        """Obtener TODAS las carpetas accesibles (raíz y compartidas)"""
         try:
             if not self.service:
                 return []
-            
-            # Buscar TODAS las carpetas en la raíz (parents in 'root')
-            query = "mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false"
-            results = self.service.files().list(
-                q=query,
-                pageSize=1000,  # Aumentar para obtener todas las carpetas
+
+            # Buscar carpetas en la raíz
+            query_root = "mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false"
+            results_root = self.service.files().list(
+                q=query_root,
+                pageSize=1000,
                 fields="nextPageToken, files(id, name, modifiedTime)"
             ).execute()
-            
-            folders = results.get('files', [])
-            
-            # Ordenar carpetas alfabéticamente
-            folders_sorted = sorted(folders, key=lambda x: x['name'].lower())
-            
+            folders_root = results_root.get('files', [])
+
+            # Buscar carpetas en 'Compartidos conmigo'
+            query_shared = "mimeType='application/vnd.google-apps.folder' and sharedWithMe and trashed=false"
+            results_shared = self.service.files().list(
+                q=query_shared,
+                pageSize=1000,
+                fields="nextPageToken, files(id, name, modifiedTime)"
+            ).execute()
+            folders_shared = results_shared.get('files', [])
+
+            # Unir y eliminar duplicados por ID
+            all_folders = {f['id']: f for f in folders_root + folders_shared}
+            folders_sorted = sorted(all_folders.values(), key=lambda x: x['name'].lower())
+
             return [{"name": folder['name'], "id": folder['id']} for folder in folders_sorted]
-            
+
         except Exception as e:
             st.error(f"❌ Error al obtener carpetas: {str(e)}")
             return []
