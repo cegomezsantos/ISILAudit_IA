@@ -169,3 +169,6 @@ logs/
 # Archivos de configuración local
 config_local.py
 settings_local.py 
+
+
+CONFIGURACION_COMPLETA_STREAMLIT.md
