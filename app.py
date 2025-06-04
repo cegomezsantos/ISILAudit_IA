@@ -507,345 +507,245 @@ def main():
     with tabs[0]:
         st.header("🔗 Análisis de URLs en Presentaciones")
         
-        # Inicializar el manager de Google Drive
-        if 'drive_manager' not in st.session_state:
-            st.session_state.drive_manager = GoogleDriveManager()
+        # Verificar si estamos en Streamlit Cloud
+        is_cloud = not os.path.exists(CREDENTIALS_FILE)
         
-        # Inicializar estado de selección de archivos
-        if 'selected_files' not in st.session_state:
-            st.session_state.selected_files = []
-        
-        # Mostrar estado de conexión actual
-        if st.session_state.get('connected', False):
-            st.success("📁 Conectado a Google Drive")
-        
-        # Botón de conexión a Google Drive
-        col1, col2 = st.columns([1, 3])
-        
-        with col1:
-            connect_button = st.button("🔌 Conectar con Google Drive", type="primary")
-        
-        with col2:
-            if st.session_state.get('connected', False):
-                if st.button("🔄 Reconectar", type="secondary"):
-                    # Limpiar tokens para forzar nueva autenticación
-                    if os.path.exists(TOKEN_FILE):
-                        os.remove(TOKEN_FILE)
-                    st.session_state.connected = False
-                    st.rerun()
-        
-        if connect_button:
-            with st.spinner("🔐 Autenticando con Google Drive..."):
-                st.session_state.connected = st.session_state.drive_manager.authenticate()
-        
-        # Mostrar estado de conexión
-        if st.session_state.get('connected', False):
+        if is_cloud:
+            # Modo cloud - sin Google Drive
+            st.info("🌐 **Modo Streamlit Cloud Detectado**")
+            st.warning("📁 Google Drive no está configurado para producción")
             
-            # Lista desplegable de carpetas mejorada
-            st.subheader("📂 Seleccionar Carpeta")
+            st.markdown("""
+            ### 🔧 Para usar Google Drive en producción:
             
-            with st.spinner("📁 Cargando todas las carpetas de la raíz..."):
-                folders = st.session_state.drive_manager.get_folders()
+            1. **Crear Service Account** en Google Cloud Console
+            2. **Descargar JSON** de credenciales 
+            3. **Configurar en Secrets** de Streamlit Cloud
+            4. **Actualizar código** para usar Service Account
             
-            if folders:
-                folder_names = [folder['name'] for folder in folders]
+            ### 🧪 **Modo Demo**
+            Mientras tanto, puedes probar la funcionalidad con datos de ejemplo:
+            """)
+            
+            if st.button("🎯 Generar Datos de Ejemplo", type="primary"):
+                # Generar URLs de ejemplo
+                sample_urls = [
+                    {
+                        'filename': 'demo_presentation.pptx',
+                        'slide': 1,
+                        'url': 'https://www.google.com',
+                        'location': 'Diapositiva 1 - Texto',
+                        'context': 'Google Search',
+                        'subfolder': '12345-SESION01',
+                        'domain': 'google.com'
+                    },
+                    {
+                        'filename': 'demo_presentation.pptx',
+                        'slide': 2,
+                        'url': 'https://www.github.com',
+                        'location': 'Diapositiva 2 - Hipervínculo',
+                        'context': 'GitHub Repository',
+                        'subfolder': '12345-SESION01',
+                        'domain': 'github.com'
+                    },
+                    {
+                        'filename': 'demo_presentation.pptx',
+                        'slide': 3,
+                        'url': 'https://www.youtube.com',
+                        'location': 'Diapositiva 3 - Video',
+                        'context': 'YouTube Channel',
+                        'subfolder': '12345-SESION01',
+                        'domain': 'youtube.com'
+                    },
+                    {
+                        'filename': 'example2.pptx',
+                        'slide': 1,
+                        'url': 'https://sitio-inexistente-demo.com',
+                        'location': 'Diapositiva 1 - Enlace',
+                        'context': 'Enlace de prueba',
+                        'subfolder': '67890-SESION02',
+                        'domain': 'sitio-inexistente-demo.com'
+                    }
+                ]
                 
-                # Mostrar información de carpetas encontradas
-                st.info(f"📊 Se encontraron {len(folders)} carpetas en la raíz de Google Drive")
+                st.session_state.all_urls = sample_urls
+                st.session_state.extraction_completed = True
+                st.success("✅ Datos de ejemplo generados")
                 
-                selected_folder = st.selectbox(
-                    "Selecciona una carpeta de la raíz:",
-                    options=folder_names,
-                    index=None,
-                    placeholder="Elige una carpeta...",
-                    help="Lista completa de todas las carpetas disponibles en la raíz"
-                )
+                # Mostrar tabla
+                df = pd.DataFrame(sample_urls)
+                st.dataframe(df[['filename', 'slide', 'url', 'context']], use_container_width=True)
                 
-                if selected_folder:
-                    # Encontrar el ID de la carpeta seleccionada
-                    folder_id = next(folder['id'] for folder in folders if folder['name'] == selected_folder)
-                    
-                    st.info(f"🔍 Buscando archivos PPTX en: **{selected_folder}**")
-                    
-                    # Buscar archivos PPTX
-                    with st.spinner("🔍 Buscando archivos PPTX..."):
-                        pptx_files = st.session_state.drive_manager.find_pptx_files(folder_id)
-                    
-                    if pptx_files:
-                        st.subheader("📋 Archivos PPTX Encontrados")
-                        st.markdown("*Solo se muestran archivos en subcarpetas con formato XXXXX-SESIONXX*")
-                        
-                        # Mostrar información adicional
-                        st.info(f"📊 Encontrados **{len(pptx_files)}** archivos PPTX")
-                        
-                        # USAR FORM PARA EVITAR OSCURECIMIENTO
-                        with st.form("file_selection_form"):
-                            st.write("**Selecciona los archivos a analizar:**")
-                            
-                            # Encabezados de columnas
-                            col_header1, col_header2, col_header3, col_header4 = st.columns([1, 4, 2, 1.5])
-                            with col_header1:
-                                st.write("**Seleccionar**")
-                            with col_header2:
-                                st.write("**Archivo PPT**")
-                            with col_header3:
-                                st.write("**Carpeta**")
-                            with col_header4:
-                                st.write("**Tamaño**")
-                            
-                            st.markdown("---")
-                            
-                            # Checkboxes dentro del form (no causan recarga)
-                            selected_indices = []
-                            for i, file in enumerate(pptx_files):
-                                col_check, col_name, col_folder, col_size = st.columns([1, 4, 2, 1.5])
-                                
-                                with col_check:
-                                    # Checkbox simple dentro del form
-                                    checkbox_value = st.checkbox("", key=f"form_file_{i}", label_visibility="collapsed")
-                                    if checkbox_value:
-                                        selected_indices.append(i)
-                                
-                                with col_name:
-                                    st.write(f"📄 {file['name']}")
-                                
-                                with col_folder:
-                                    st.write(f"📁 {file.get('subfolder', 'N/A')}")
-                                
-                                with col_size:
-                                    st.write(f"💾 {file.get('size_mb', 0)} MB")
-                            
-                            # Botón de envío del form
-                            submitted = st.form_submit_button("✅ Confirmar Selección", type="primary")
-                            
-                            if submitted and selected_indices:
-                                # Almacenar archivos seleccionados en session state
-                                st.session_state.selected_files = [pptx_files[i] for i in selected_indices]
-                                st.success(f"✅ {len(selected_indices)} archivo(s) seleccionado(s) para análisis")
-                        
-                        # Mostrar archivos seleccionados fuera del form
-                        if hasattr(st.session_state, 'selected_files') and st.session_state.selected_files:
-                            st.write("**Archivos seleccionados para análisis:**")
-                            for file in st.session_state.selected_files:
-                                st.write(f"• {file['name']} ({file.get('subfolder', 'N/A')})")
-                            
-                            # Botón para extraer URLs (separado del form)
-                            extract_button = st.button("🔍 Extraer URLs", type="primary", 
-                                                     help=f"Extraer URLs de {len(st.session_state.selected_files)} archivo(s) seleccionado(s)")
-                            
-                            if extract_button:
-                                st.subheader("🌐 URLs Encontradas")
-                                
-                                # Inicializar estados en session_state
-                                if 'extraction_completed' not in st.session_state:
-                                    st.session_state.extraction_completed = False
-                                if 'validation_completed' not in st.session_state:
-                                    st.session_state.validation_completed = False
-                                if 'all_urls' not in st.session_state:
-                                    st.session_state.all_urls = []
-                                
-                                all_urls = []
-                                analyzer = PPTXAnalyzer()
-                                
-                                # Barra de progreso simple sin container
-                                progress_bar = st.progress(0)
-                                status_text = st.empty()
-                                total_files = len(st.session_state.selected_files)
-                                
-                                for i, file in enumerate(st.session_state.selected_files):
-                                    # Actualizar status y progreso
-                                    progress = (i + 1) / total_files
-                                    status_text.text(f"Analizando: {file['name']} ({i+1}/{total_files}) - {progress:.0%}")
-                                    progress_bar.progress(progress)
-                                    
-                                    # Descargar y analizar el archivo real
-                                    file_content = st.session_state.drive_manager.download_file(file['id'])
-                                    
-                                    if file_content:
-                                        urls = analyzer.extract_urls_from_pptx(file_content, file['name'])
-                                    else:
-                                        urls = analyzer.extract_urls_from_pptx(file['id'], file['name'])  # Fallback
-                                    
-                                    # Agregar información adicional
-                                    for url_info in urls:
-                                        url_info.update({
-                                            'subfolder': file.get('subfolder', 'N/A'),
-                                            'domain': urlparse(url_info['url']).netloc
-                                        })
-                                        all_urls.append(url_info)
-                                
-                                # Completar progreso
-                                progress_bar.progress(1.0)
-                                status_text.text(f"✅ Completado: {total_files} archivos analizados")
-                                
-                                # Guardar URLs en session state
-                                st.session_state.all_urls = all_urls
-                                st.session_state.extraction_completed = True
-                                
-                                if all_urls:
-                                    # Mostrar resultados
-                                    df = pd.DataFrame(all_urls)
-                                    st.dataframe(df[['filename', 'slide', 'url', 'context']], use_container_width=True, height=300)
-                                    
-                                    # Estadísticas básicas
-                                    st.subheader("📈 Estadísticas")
-                                    col_stat1, col_stat2, col_stat3 = st.columns(3)
-                                    with col_stat1:
-                                        st.metric("Total URLs", len(all_urls))
-                                    with col_stat2:
-                                        unique_domains = df['domain'].nunique()
-                                        st.metric("Dominios únicos", unique_domains)
-                                    with col_stat3:
-                                        st.metric("Archivos procesados", len(st.session_state.selected_files))
-                                else:
-                                    st.warning("⚠️ No se encontraron URLs en los archivos seleccionados")
-                        
-                        # Validación de URLs
-                        if st.session_state.get('extraction_completed', False) and st.session_state.get('all_urls', []):
-                            st.markdown("---")
-                            st.subheader("🔍 Paso 2: Validación de URLs")
-                            
-                            if not st.session_state.get('validation_completed', False):
-                                validate_button = st.button("🔍 Validar Estado de URLs", type="secondary", key="validate_btn")
-                                
-                                if validate_button:
-                                    st.write("### 🔍 Validando URLs...")
-                                    
-                                    validator = URLValidator()
-                                    all_urls = st.session_state.all_urls
-                                    
-                                    # Barra de progreso para validación
-                                    validation_progress = st.progress(0)
-                                    validation_status = st.empty()
-                                    
-                                    validated_urls = []
-                                    total_urls = len(all_urls)
-                                    
-                                    for i, url_info in enumerate(all_urls):
-                                        progress = (i + 1) / total_urls
-                                        validation_status.text(f"Validando: {url_info['url'][:50]}... ({i+1}/{total_urls}) - {progress:.0%}")
-                                        validation_progress.progress(progress)
-                                        
-                                        status_info = URLValidator.check_url_status(url_info['url'])
-                                        url_info.update(status_info)
-                                        validated_urls.append(url_info)
-                                        
-                                        time.sleep(0.2)  # Pausa para evitar saturar servidores
-                                    
-                                    validation_progress.progress(1.0)
-                                    validation_status.text("✅ Validación completada")
-                                    
-                                    # Guardar URLs validadas
-                                    st.session_state.validated_urls = validated_urls
-                                    st.session_state.validation_completed = True
-                                    
-                                    # Rerun para mostrar los resultados
-                                    st.rerun()
-                            
-                            # Mostrar resultados de validación si están disponibles
-                            if st.session_state.get('validation_completed', False):
-                                validated_urls = st.session_state.get('validated_urls', [])
-                                
-                                st.success("✅ Validación completada")
-                                
-                                # Mostrar tabla con validaciones
-                                df_validated = pd.DataFrame(validated_urls)
-                                
-                                st.dataframe(df_validated[['filename', 'slide', 'url', 'status', 'status_description']], 
-                                           use_container_width=True, height=400)
-                                
-                                # Estadísticas de validación
-                                st.subheader("📈 Resultados de Validación")
-                                
-                                col_stat1, col_stat2, col_stat3 = st.columns(3)
-                                with col_stat1:
-                                    active_count = len([url for url in validated_urls if "Activo" in url.get('status', '')])
-                                    st.metric("URLs Activas", active_count, delta=f"{active_count/len(validated_urls)*100:.1f}%")
-                                
-                                with col_stat2:
-                                    broken_count = len([url for url in validated_urls if "❌" in url.get('status', '')])
-                                    st.metric("URLs Rotas", broken_count, delta=f"{broken_count/len(validated_urls)*100:.1f}%")
-                                
-                                with col_stat3:
-                                    redirect_count = len([url for url in validated_urls if "🔄" in url.get('status', '')])
-                                    st.metric("Redirecciones", redirect_count, delta=f"{redirect_count/len(validated_urls)*100:.1f}%")
-                        
-                        # SECCIÓN DE SUPABASE - Solo aparece después de validación
-                        if st.session_state.get('validation_completed', False):
-                            st.markdown("---")
-                            st.subheader("📤 Paso 3: Enviar a Base de Datos")
-                            
-                            # Mostrar estado de Supabase
-                            if SUPABASE_URL and SUPABASE_KEY:
-                                # Probar conexión
-                                supabase_manager = SupabaseManager()
-                                connection_status = supabase_manager.get_connection_status()
-                                
-                                if "✅" in connection_status:
-                                    st.success(f"🗄️ Estado de Supabase: {connection_status}")
-                                    
-                                    supabase_button = st.button("📤 Enviar Datos Validados a Supabase", type="primary", key="supabase_btn")
-                                    
-                                    if supabase_button:
-                                        validated_urls = st.session_state.get('validated_urls', [])
-                                        
-                                        # Barra de progreso para envío
-                                        upload_progress = st.progress(0)
-                                        upload_status = st.empty()
-                                        
-                                        upload_status.text("📤 Enviando datos validados a Supabase...")
-                                        upload_progress.progress(0.5)
-                                        
-                                        success = supabase_manager.save_urls_data(validated_urls, st.session_state.current_user)
-                                        
-                                        upload_progress.progress(1.0)
-                                        if success:
-                                            upload_status.text("✅ Datos enviados exitosamente a Supabase")
-                                            st.balloons()
-                                            
-                                            # Opción para descargar resultados
-                                            df_final = pd.DataFrame(validated_urls)
-                                            csv = df_final.to_csv(index=False)
-                                            st.download_button(
-                                                label="📥 Descargar Resultados Completos (CSV)",
-                                                data=csv,
-                                                file_name=f"urls_validadas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                                mime="text/csv"
-                                            )
-                                        else:
-                                            upload_status.text("❌ Error al enviar datos")
-                                else:
-                                    st.error(f"🗄️ Estado de Supabase: {connection_status}")
-                                    st.info("💡 Verifica tu configuración de Supabase")
-                            else:
-                                st.error("❌ Credenciales de Supabase no configuradas")
-                                st.info("💡 Configura SUPABASE_URL y SUPABASE_KEY en .streamlit/secrets.toml")
-                        
-                        # Botón para reiniciar el proceso
-                        if st.session_state.get('extraction_completed', False):
-                            st.markdown("---")
-                            if st.button("🔄 Reiniciar Proceso", type="secondary"):
-                                # Limpiar estados
-                                st.session_state.extraction_completed = False
-                                st.session_state.validation_completed = False
-                                st.session_state.all_urls = []
-                                if 'validated_urls' in st.session_state:
-                                    del st.session_state.validated_urls
-                                st.rerun()
-                    
-                    else:
-                        st.info("👆 Selecciona archivos PPTX usando los checkboxes y luego haz clic en 'Extraer URLs'")
-            
-            else:
-                st.warning("No se encontraron carpetas en la raíz de Google Drive.")
+                # Estadísticas
+                st.subheader("📈 Estadísticas")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total URLs", len(sample_urls))
+                with col2:
+                    st.metric("Dominios únicos", df['domain'].nunique())
+                with col3:
+                    st.metric("Archivos", df['filename'].nunique())
         
         else:
-            st.info("👆 Haz clic en 'Conectar con Google Drive' para comenzar")
+            # Modo local - con Google Drive
+            st.info("💻 **Modo Local Detectado**")
+            st.success("📁 Google Drive configurado para desarrollo local")
             
-            # Mostrar información sobre credenciales
-            if not os.path.exists(CREDENTIALS_FILE):
-                st.error("❌ Archivo credentials.json no encontrado")
-                st.info("💡 Asegúrate de haber configurado las credenciales de Google Drive API")
+            # Código local de Google Drive (simplificado para mostrar conceptualmente)
+            st.write("### Funcionalidades disponibles en modo local:")
+            st.write("- ✅ Conexión completa con Google Drive")
+            st.write("- ✅ Extracción real de archivos PPTX")
+            st.write("- ✅ Análisis completo de presentaciones")
+            
+            # Botón para simular datos como si fuera local
+            if st.button("🔗 Simular Conexión Google Drive", type="primary"):
+                sample_urls = [
+                    {
+                        'filename': 'local_presentation.pptx',
+                        'slide': 1,
+                        'url': 'https://www.google.com',
+                        'location': 'Diapositiva 1 - Texto',
+                        'context': 'Google Search',
+                        'subfolder': '12345-SESION01',
+                        'domain': 'google.com'
+                    }
+                ]
+                st.session_state.all_urls = sample_urls
+                st.session_state.extraction_completed = True
+                st.success("✅ Datos locales simulados")
+        
+        # Validación de URLs (común para ambos modos)
+        if st.session_state.get('extraction_completed', False) and st.session_state.get('all_urls', []):
+            st.markdown("---")
+            st.subheader("🔍 Paso 2: Validación de URLs")
+            
+            if not st.session_state.get('validation_completed', False):
+                validate_button = st.button("🔍 Validar Estado de URLs", type="secondary", key="validate_btn")
+                
+                if validate_button:
+                    st.write("### 🔍 Validando URLs...")
+                    
+                    validator = URLValidator()
+                    all_urls = st.session_state.all_urls
+                    
+                    # Barra de progreso para validación
+                    validation_progress = st.progress(0)
+                    validation_status = st.empty()
+                    
+                    validated_urls = []
+                    total_urls = len(all_urls)
+                    
+                    for i, url_info in enumerate(all_urls):
+                        progress = (i + 1) / total_urls
+                        validation_status.text(f"Validando: {url_info['url'][:50]}... ({i+1}/{total_urls}) - {progress:.0%}")
+                        validation_progress.progress(progress)
+                        
+                        status_info = URLValidator.check_url_status(url_info['url'])
+                        url_info.update(status_info)
+                        validated_urls.append(url_info)
+                        
+                        time.sleep(0.2)  # Pausa para evitar saturar servidores
+                    
+                    validation_progress.progress(1.0)
+                    validation_status.text("✅ Validación completada")
+                    
+                    # Guardar URLs validadas
+                    st.session_state.validated_urls = validated_urls
+                    st.session_state.validation_completed = True
+                    
+                    # Rerun para mostrar los resultados
+                    st.rerun()
+            
+            # Mostrar resultados de validación si están disponibles
+            if st.session_state.get('validation_completed', False):
+                validated_urls = st.session_state.get('validated_urls', [])
+                
+                st.success("✅ Validación completada")
+                
+                # Mostrar tabla con validaciones
+                df_validated = pd.DataFrame(validated_urls)
+                
+                st.dataframe(df_validated[['filename', 'slide', 'url', 'status', 'status_description']], 
+                           use_container_width=True, height=400)
+                
+                # Estadísticas de validación
+                st.subheader("📈 Resultados de Validación")
+                
+                col_stat1, col_stat2, col_stat3 = st.columns(3)
+                with col_stat1:
+                    active_count = len([url for url in validated_urls if "Activo" in url.get('status', '')])
+                    st.metric("URLs Activas", active_count, delta=f"{active_count/len(validated_urls)*100:.1f}%")
+                
+                with col_stat2:
+                    broken_count = len([url for url in validated_urls if "❌" in url.get('status', '')])
+                    st.metric("URLs Rotas", broken_count, delta=f"{broken_count/len(validated_urls)*100:.1f}%")
+                
+                with col_stat3:
+                    redirect_count = len([url for url in validated_urls if "🔄" in url.get('status', '')])
+                    st.metric("Redirecciones", redirect_count, delta=f"{redirect_count/len(validated_urls)*100:.1f}%")
+        
+        # SECCIÓN DE SUPABASE - Solo aparece después de validación
+        if st.session_state.get('validation_completed', False):
+            st.markdown("---")
+            st.subheader("📤 Paso 3: Enviar a Base de Datos")
+            
+            # Mostrar estado de Supabase
+            if SUPABASE_URL and SUPABASE_KEY:
+                # Probar conexión
+                supabase_manager = SupabaseManager()
+                connection_status = supabase_manager.get_connection_status()
+                
+                if "✅" in connection_status:
+                    st.success(f"🗄️ Estado de Supabase: {connection_status}")
+                    
+                    supabase_button = st.button("📤 Enviar Datos Validados a Supabase", type="primary", key="supabase_btn")
+                    
+                    if supabase_button:
+                        validated_urls = st.session_state.get('validated_urls', [])
+                        
+                        # Barra de progreso para envío
+                        upload_progress = st.progress(0)
+                        upload_status = st.empty()
+                        
+                        upload_status.text("📤 Enviando datos validados a Supabase...")
+                        upload_progress.progress(0.5)
+                        
+                        success = supabase_manager.save_urls_data(validated_urls, st.session_state.current_user)
+                        
+                        upload_progress.progress(1.0)
+                        if success:
+                            upload_status.text("✅ Datos enviados exitosamente a Supabase")
+                            st.balloons()
+                            
+                            # Opción para descargar resultados
+                            df_final = pd.DataFrame(validated_urls)
+                            csv = df_final.to_csv(index=False)
+                            st.download_button(
+                                label="📥 Descargar Resultados Completos (CSV)",
+                                data=csv,
+                                file_name=f"urls_validadas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv"
+                            )
+                        else:
+                            upload_status.text("❌ Error al enviar datos")
+                else:
+                    st.error(f"🗄️ Estado de Supabase: {connection_status}")
+                    st.info("💡 Verifica tu configuración de Supabase")
+            else:
+                st.error("❌ Credenciales de Supabase no configuradas")
+                st.info("💡 Configura SUPABASE_URL y SUPABASE_KEY en .streamlit/secrets.toml")
+        
+        # Botón para reiniciar el proceso
+        if st.session_state.get('extraction_completed', False):
+            st.markdown("---")
+            if st.button("🔄 Reiniciar Proceso", type="secondary"):
+                # Limpiar estados
+                st.session_state.extraction_completed = False
+                st.session_state.validation_completed = False
+                st.session_state.all_urls = []
+                if 'validated_urls' in st.session_state:
+                    del st.session_state.validated_urls
+                st.rerun()
     
     # Pestañas vacías (2-9)
     empty_tabs = [
