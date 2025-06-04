@@ -20,6 +20,7 @@ from datetime import datetime
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2 import service_account
 import traceback
+from pptx_analyzer import PPTXURLExtractor
 
 # Configuración de usuarios
 USERS = {
@@ -488,8 +489,66 @@ def main():
                             extract_button = st.button("🔍 Extraer URLs", type="primary", help=f"Extraer URLs de {len(st.session_state.selected_files)} archivo(s) seleccionado(s)")
                             if extract_button:
                                 st.subheader("🌐 URLs Encontradas")
-                                st.info("🚧 **Funcionalidad de extracción de URLs en desarrollo**")
-                                st.write("Una vez conectado exitosamente, se habilitará la extracción completa de URLs de archivos PPTX.")
+                                extractor = PPTXURLExtractor()
+                                all_results = []
+                                supabase = None
+                                if SUPABASE_URL and SUPABASE_KEY:
+                                    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+                                progress = st.progress(0)
+                                for idx, file in enumerate(st.session_state.selected_files):
+                                    st.info(f"Descargando y analizando: {file['name']}")
+                                    pptx_bytes = st.session_state.drive_manager.download_file(file['id'])
+                                    if not pptx_bytes:
+                                        st.warning(f"No se pudo descargar {file['name']}")
+                                        continue
+                                    urls = extractor.extract_urls_from_file(pptx_bytes)
+                                    st.write(f"🔗 {len(urls)} URLs extraídas de {file['name']}")
+                                    for url_info in urls:
+                                        url = url_info['url']
+                                        # Validar estado HTTP
+                                        try:
+                                            resp = requests.head(url, allow_redirects=True, timeout=5)
+                                            status = resp.status_code
+                                            status_desc = resp.reason
+                                        except Exception as e:
+                                            status = None
+                                            status_desc = str(e)
+                                        # Dominio
+                                        try:
+                                            url_domain = urlparse(url).netloc
+                                        except Exception:
+                                            url_domain = ''
+                                        # Insertar en Supabase
+                                        if supabase:
+                                            data = {
+                                                'filename': file['name'],
+                                                'slide_number': 1,  # Mejorar si se puede extraer el número real
+                                                'url': url,
+                                                'url_domain': url_domain,
+                                                'location_context': url_info.get('location', ''),
+                                                'text_context': url_info.get('context', ''),
+                                                'status': str(status) if status else 'Error',
+                                                'status_description': status_desc,
+                                                'processed_by': st.session_state.current_user,
+                                                'subfolder': file.get('subfolder', ''),
+                                            }
+                                            try:
+                                                supabase.table('ppt_urls').insert(data).execute()
+                                            except Exception as e:
+                                                st.warning(f"No se pudo subir a Supabase: {e}")
+                                        # Guardar para mostrar
+                                        all_results.append({
+                                            'Archivo': file['name'],
+                                            'URL': url,
+                                            'Dominio': url_domain,
+                                            'Estado': status,
+                                            'Descripción': status_desc,
+                                            'Ubicación': url_info.get('location', ''),
+                                            'Contexto': url_info.get('context', ''),
+                                        })
+                                    progress.progress((idx + 1) / len(st.session_state.selected_files))
+                                st.success(f"Extracción y validación completada. Total de URLs: {len(all_results)}")
+                                st.dataframe(all_results)
                     else:
                         st.info("👆 No se encontraron archivos PPTX en las subcarpetas con formato XXXXX-SESIONXX")
             else:
