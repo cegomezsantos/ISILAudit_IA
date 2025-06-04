@@ -19,6 +19,7 @@ from supabase import create_client, Client
 from datetime import datetime
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2 import service_account
+import traceback
 
 # Configuración de usuarios
 USERS = {
@@ -299,6 +300,9 @@ GOOGLE_CREDENTIALS = '''{"type": "service_account", "project_id": "agente-101", 
             if not self.service:
                 st.error("❌ No hay servicio de Google Drive inicializado.")
                 return False
+            if not folder_id or not isinstance(folder_id, str):
+                st.error("❌ Debes ingresar un ID de carpeta válido.")
+                return False
             self.service.files().update(
                 fileId=folder_id,
                 addParents='root'
@@ -307,6 +311,8 @@ GOOGLE_CREDENTIALS = '''{"type": "service_account", "project_id": "agente-101", 
             return True
         except Exception as e:
             st.error(f"❌ Error al añadir carpeta a la raíz: {str(e)}")
+            st.error(f"Tipo de error: {type(e).__name__}")
+            st.code(traceback.format_exc())
             return False
 
 def main():
