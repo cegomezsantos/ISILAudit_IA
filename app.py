@@ -529,11 +529,10 @@ def main():
                                                 'text_context': url_info.get('context', ''),
                                                 'status': str(status) if status else 'Error',
                                                 'status_description': status_desc,
-                                                'processed_by': st.session_state.current_user,
                                                 'subfolder': file.get('subfolder', ''),
                                             }
                                             try:
-                                                supabase.table('ppt_urls').insert(data).execute()
+                                                supabase.table('validated_urls').insert(data).execute()
                                             except Exception as e:
                                                 st.warning(f"No se pudo subir a Supabase: {e}")
                                         # Guardar para mostrar
