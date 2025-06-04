@@ -529,7 +529,9 @@ def main():
                                                 'text_context': url_info.get('context', ''),
                                                 'status': str(status) if status else 'Error',
                                                 'status_description': status_desc,
+                                                'checked_at': datetime.utcnow().isoformat(),
                                                 'subfolder': file.get('subfolder', ''),
+                                                'processed_by': st.session_state.current_user,
                                             }
                                             try:
                                                 supabase.table('validated_urls').insert(data).execute()
