@@ -10,7 +10,7 @@
 
 **ANTES QUE NADA**, necesitas crear la tabla en Supabase:
 
-1. Ve a: https://supabase.com/dashboard/projects/ktxmkdazgguqiubbalwj
+1. Ve a: https://supabase.com/dashboard/projects/<tu-proyecto>
 2. Clic en **"SQL Editor"** (menú izquierdo)
 3. Crea una **Nueva Query**
 4. **Copia y pega todo el contenido** del archivo `simplified_database.sql`
@@ -25,9 +25,10 @@
 3. Asegúrate de que tengas exactamente esto:
 
 ```toml
-SUPABASE_URL = "https://ktxmkdazgguqiubbalwj.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt0eG1rZGF6Z2d1cWl1YmJhbHdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkwMDEwNDQsImV4cCI6MjA2NDU3NzA0NH0.wbbVT69NfHHhYWCslZ44o_P4vb6cGUXg41SwszmQSfw"
+SUPABASE_URL = "<TU_SUPABASE_URL>"
+SUPABASE_KEY = "<TU_SUPABASE_KEY>"
 ```
+Reemplaza los valores entre `<...>` con las credenciales de tu proyecto.
 
 **⚠️ IMPORTANTE:**
 - NO debe haber espacios al inicio o final

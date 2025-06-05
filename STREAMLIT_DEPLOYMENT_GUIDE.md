@@ -81,16 +81,17 @@ En Streamlit Cloud, ve a **Settings > Secrets** y agrega:
 
 ```toml
 # Configuración de Supabase
-SUPABASE_URL = "https://ktxmkdazgguqiubbalwj.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt0eG1rZGF6Z2d1cWl1YmJhbHdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkwMDEwNDQsImV4cCI6MjA2NDU3NzA0NH0.wbbVT69NfHHhYWCslZ44o_P4vb6cGUXg41SwszmQSfw"
+SUPABASE_URL = "<TU_SUPABASE_URL>"
+SUPABASE_KEY = "<TU_SUPABASE_KEY>"
 
 # Configuración adicional de seguridad (opcional)
 SESSION_SECRET = "tu-clave-secreta-para-sesiones"
 ```
+Reemplaza los valores entre `<...>` con las credenciales de tu proyecto.
 
 ### Paso 4: Ejecutar SQL en Supabase
 
-1. **Ir a tu proyecto Supabase**: https://supabase.com/dashboard/projects/ktxmkdazgguqiubbalwj
+1. **Ir a tu proyecto Supabase**: https://supabase.com/dashboard/projects/<tu-proyecto>
 
 2. **Ir a SQL Editor**
 
