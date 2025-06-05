@@ -122,6 +122,18 @@ except Exception as e:
     SUPABASE_URL = ""
     SUPABASE_KEY = ""
 
+# Probar conexión con Supabase al iniciar
+supabase_client = None
+supabase_error = None
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        # Consulta simple para verificar conexión
+        supabase_client.table('validated_urls').select('id').limit(1).execute()
+    except Exception as e:
+        supabase_error = str(e)
+        supabase_client = None
+
 class GoogleDriveManager:
     def __init__(self):
         self.service = None
@@ -354,8 +366,13 @@ def main():
     
     # Mostrar estado de Supabase
     if SUPABASE_URL and SUPABASE_KEY:
-        st.sidebar.success(f"🗄️ Supabase: Configurado")
-        st.sidebar.write(f"URL: {SUPABASE_URL[:30]}...")
+        if supabase_client:
+            st.sidebar.success("🗄️ Supabase: Conectado")
+            st.sidebar.write(f"URL: {SUPABASE_URL[:30]}...")
+        else:
+            st.sidebar.error("🗄️ Supabase: Error de conexión")
+            if supabase_error:
+                st.sidebar.write(supabase_error)
     else:
         st.sidebar.error("🗄️ Supabase: No configurado")
         st.sidebar.write("Configura las credenciales en secrets.toml")
@@ -491,9 +508,13 @@ def main():
                                 st.subheader("🌐 URLs Encontradas")
                                 extractor = PPTXURLExtractor()
                                 all_results = []
-                                supabase = None
-                                if SUPABASE_URL and SUPABASE_KEY:
-                                    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+                                supabase = supabase_client
+                                if not supabase and SUPABASE_URL and SUPABASE_KEY:
+                                    try:
+                                        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+                                    except Exception as e:
+                                        st.warning(f"No se pudo conectar a Supabase: {e}")
+                                        supabase = None
                                 progress = st.progress(0)
                                 for idx, file in enumerate(st.session_state.selected_files):
                                     st.info(f"Descargando y analizando: {file['name']}")

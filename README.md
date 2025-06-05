@@ -59,8 +59,9 @@ pip install -r requirements.txt
 ### Configuración de Supabase
 
 1. **Crear proyecto en Supabase**
-2. **Ejecutar el SQL** del archivo `supabase_table.sql` en el SQL Editor
-3. **Configurar variables de entorno**:
+2. **Ejecutar el SQL** del archivo `simplified_database.sql` en el SQL Editor
+3. **Copiar** `.streamlit/secrets.toml.example` como `.streamlit/secrets.toml` y rellenar tus valores
+4. **Configurar variables de entorno**:
    ```bash
    # En Streamlit secrets o variables de entorno
    SUPABASE_URL = "tu_supabase_url"
@@ -183,7 +184,7 @@ ISILAudit/
 ├── app.py                  # Aplicación principal
 ├── pptx_analyzer.py       # Analizador mejorado de PPTX
 ├── requirements.txt       # Dependencias
-├── supabase_table.sql    # Script SQL para Supabase
+├── simplified_database.sql    # Script SQL para Supabase
 ├── credentials.json      # Credenciales Google (no incluir en Git)
 ├── token.json           # Token de autenticación (generado automáticamente)
 ├── README.md            # Esta documentación
