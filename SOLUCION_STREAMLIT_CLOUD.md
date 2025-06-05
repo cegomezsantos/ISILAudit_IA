@@ -25,8 +25,8 @@
 3. Asegúrate de que tengas exactamente esto:
 
 ```toml
-SUPABASE_URL = "https://ktxmkdazgguqiubbalwj.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt0eG1rZGF6Z2d1cWl1YmJhbHdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkwMDEwNDQsImV4cCI6MjA2NDU3NzA0NH0.wbbVT69NfHHhYWCslZ44o_P4vb6cGUXg41SwszmQSfw"
+SUPABASE_URL = "tu-url-de-supabase-aqui"
+SUPABASE_KEY = "tu-clave-anonima-supabase-aqui"
 ```
 
 **⚠️ IMPORTANTE:**

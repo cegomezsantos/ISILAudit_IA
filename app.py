@@ -522,7 +522,7 @@ def main():
                                         if supabase:
                                             data = {
                                                 'filename': file['name'],
-                                                'slide_number': 1,  # Mejorar si se puede extraer el número real
+                                                'slide_number': url_info.get('slide_number', 1),
                                                 'url': url,
                                                 'url_domain': url_domain,
                                                 'location_context': url_info.get('location', ''),
@@ -534,9 +534,13 @@ def main():
                                                 'processed_by': st.session_state.current_user,
                                             }
                                             try:
-                                                supabase.table('validated_urls').insert(data).execute()
+                                                result = supabase.table('validated_urls').insert(data).execute()
+                                                if not result.data:
+                                                    st.warning(f"⚠️ Supabase: Inserción sin datos para URL: {url[:50]}...")
                                             except Exception as e:
-                                                st.warning(f"No se pudo subir a Supabase: {e}")
+                                                st.error(f"❌ Error Supabase: {str(e)}")
+                                                st.error(f"🔍 Datos que causaron error: {data}")
+                                                # Continuar con el procesamiento sin detener todo
                                         # Guardar para mostrar
                                         all_results.append({
                                             'Archivo': file['name'],

@@ -148,16 +148,12 @@ COMMENT ON COLUMN validated_urls.processed_by IS 'Usuario que realizó el proces
 COMMENT ON COLUMN validated_urls.subfolder IS 'Subcarpeta donde se encontró el archivo';
 
 -- =================================
--- DATOS DE EJEMPLO (OPCIONAL)
+-- =================================
+-- CONFIGURACIÓN COMPLETADA
 -- =================================
 
--- Insertar algunos datos de ejemplo para testing
--- NOTA: Remover en producción
-/*
-INSERT INTO validated_urls 
-(filename, slide_number, url, url_domain, location_context, text_context, status, status_description, subfolder, processed_by)
-VALUES 
-('ejemplo.pptx', 1, 'https://www.google.com', 'google.com', 'Diapositiva 1 - Texto', 'Google Search', '✅ Activo', 'URL funciona correctamente', '12345-SESION01', 'admin'),
-('ejemplo.pptx', 2, 'https://www.github.com', 'github.com', 'Diapositiva 2 - Hipervínculo', 'GitHub', '✅ Activo', 'URL funciona correctamente', '12345-SESION01', 'admin'),
-('test.pptx', 1, 'https://sitio-inexistente.com', 'sitio-inexistente.com', 'Diapositiva 1 - Enlace', 'Enlace roto', '❌ No encontrado', 'La página no existe (Error 404)', '67890-SESION02', 'jsato');
-*/ 
+-- Base de datos optimizada para ISILAudit IA
+-- Tabla: validated_urls
+-- Funciones: update_updated_at_column()
+-- Vistas: user_url_summary, frequent_domains, problematic_files
+-- Políticas: RLS habilitado para usuarios autenticados 
